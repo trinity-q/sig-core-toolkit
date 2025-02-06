@@ -229,7 +229,6 @@ class IsoBuild:
                 required_pkgs=required_pkgs,
                 dist=self.disttag,
                 repos=self.repolist,
-                user_agent='{{ user_agent }}',
                 compose_dir_is_here=self.compose_dir_is_here,
                 compose_dir=self.compose_root,
         )
@@ -802,7 +801,6 @@ class IsoBuild:
                 required_pkgs=required_pkgs,
                 dist=self.disttag,
                 repos=self.repolist,
-                user_agent='{{ user_agent }}',
                 compose_dir_is_here=True,
                 compose_dir=self.compose_root,
         )
@@ -1691,7 +1689,6 @@ class LiveBuild:
                 dist=self.disttag,
                 repos=self.repolist,
                 compose_dir_is_here=True,
-                user_agent='{{ user_agent }}',
                 compose_dir=self.compose_root,
         )
 
