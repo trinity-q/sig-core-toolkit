@@ -817,14 +817,6 @@ class IsoBuild:
                 image=image,
         )
 
-        opts = {
-                'arch': arch,
-                'iso_name': isoname,
-                'volid': volid,
-                'graft_points': grafts,
-                'iso_level': self.iso_map['iso_level'],
-        }
-
         self.log.info(Color.INFO + f'boot.iso volume name: {volid}')
 
         # Generate a xorriso compatible dialog
@@ -839,14 +831,13 @@ class IsoBuild:
         )
         with open(xorriso_template_path, "w+") as xorriso_template_entry:
             xorriso_template_entry.write(xorriso_template_output)
-        opts['graft_points'] = xorriso_template_path
 
         make_image = '{} {}'.format(
-                Shared.get_make_image_cmd(opts),
+                Shared.get_make_image_cmd(xorriso_template_path),
                 log_path_command
         )
-        implantmd5 = Shared.get_implantisomd5_cmd(opts)
-        make_manifest = Shared.get_manifest_cmd(opts)
+        implantmd5 = Shared.get_implantisomd5_cmd(isoname)
+        make_manifest = Shared.get_manifest_cmd(isoname)
 
         iso_template_output = iso_template.render(
                 extra_iso_mode=self.extra_iso_mode,
