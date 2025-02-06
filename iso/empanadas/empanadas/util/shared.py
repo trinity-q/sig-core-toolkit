@@ -858,42 +858,44 @@ class Shared:
         return cmd
 
     @staticmethod
-    def get_make_image_cmd(opts):
+    def get_make_image_cmd(graft_path):
         """
         Generates the command to actually make the image in the first place
         """
-        cmd = [
-                '/usr/bin/xorriso',
-                '-dialog',
-                'on',
-                '<',
-                opts['graft_points'],
-                '2>&1'
-        ]
-        returned_cmd = ' '.join(cmd)
-        return returned_cmd
+        # This function previously took a dictionary, from which it
+        # used a single key.  We will retain that behaviour for any
+        # legacy callers.
+        if isinstance(graft_path, dict):
+            graft_path = graft_path['graft_points']
+        return f'/usr/bin/xorriso -dialog on < {graft_path} 2>&1'
 
     @staticmethod
-    def get_implantisomd5_cmd(opts):
+    def get_implantisomd5_cmd(iso_name):
         """
         Implants md5 into iso
         """
-        cmd = ["/usr/bin/implantisomd5", "--supported-iso", opts['iso_name']]
-        returned_cmd = ' '.join(cmd)
-        return returned_cmd
+        # This function previously took a dictionary, from which it
+        # used a single key.  We will retain that behaviour for any
+        # legacy callers.
+        if isinstance(iso_name, dict):
+            iso_name = iso_name['iso_name']
+        return f'/usr/bin/implantisomd5 --supported-iso {iso_name}'
 
     @staticmethod
-    def get_manifest_cmd(opts):
+    def get_manifest_cmd(iso_name):
         """
         Gets an ISO manifest
         """
-        return """/usr/bin/xorriso -dev %s --find |
-            tail -n+2 |
-            tr -d "'" |
-            cut -c2-  | sort >> %s.manifest""" % (
-            shlex.quote(opts['iso_name']),
-            shlex.quote(opts['iso_name']),
-        )
+        # This function previously took a dictionary, from which it
+        # used a single key.  We will retain that behaviour for any
+        # legacy callers.
+        if isinstance(iso_name, dict):
+            iso_name = iso_name['iso_name']
+        iso_name = shlex.quote(iso_name)
+        return f'/usr/bin/xorriso -dev {iso_name} --find | ' \
+            'tail -n+2 | ' \
+            'tr -d "\'" | ' \
+            f'cut -c2- | sort >> {iso_name}.manifest'
 
     @staticmethod
     def build_repo_list(
