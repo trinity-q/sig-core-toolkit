@@ -28,107 +28,27 @@ class IsoBuild:
     There are functions to build the DVD (and potentially other) images. Each
     particular build or process starts with "run" in their name.
     """
-    def __init__(
-            self,
-            rlvars,
-            config,
-            major,
-            arch=None,
-            rc: bool = False,
-            s3: bool = False,
-            force_download: bool = False,
-            force_unpack: bool = False,
-            isolation: str = 'auto',
-            extra_iso=None,
-            extra_iso_mode: str = 'local',
-            compose_dir_is_here: bool = False,
-            hashed: bool = False,
-            updated_image: bool = False,
-            image_increment: str = '0',
-            image=None,
-            s3_region=None,
-            s3_bucket=None,
-            s3_bucket_url=None,
-            logger=None
-    ):
+    def __init__(self, config, image=None):
+        self.cfg = config
         self.image = image
-        self.fullname = rlvars['fullname']
-        self.distname = config['distname']
-        self.shortname = config['shortname']
         # Relevant config items
-        self.major_version = major
-        self.compose_dir_is_here = compose_dir_is_here
-        self.disttag = rlvars['disttag']
-        self.date_stamp = config['date_stamp']
         self.timestamp = time.time()
-        self.compose_root = config['compose_root']
-        self.compose_base = config['compose_root'] + "/" + major
-        self.current_arch = config['arch']
-        self.mock_work_root = config['mock_work_root']
-        self.lorax_result_root = config['mock_work_root'] + "/" + "lorax"
-        self.mock_isolation = isolation
-        self.iso_map = rlvars['iso_map']
-        self.cloudimages = rlvars['cloudimages']
-        self.release_candidate = rc
-        self.s3 = s3
-        self.force_unpack = force_unpack
-        self.force_download = force_download
-        self.extra_iso = extra_iso
-        self.extra_iso_mode = extra_iso_mode
-        self.checksum = rlvars['checksum']
-        self.profile = rlvars['profile']
-        self.hashed = hashed
-        self.updated_image = updated_image
-        self.updated_image_increment = "." + image_increment
+        self.lorax_result_root = self.cfg.mock_work_root + "/" + "lorax"
         self.updated_image_date = (time.strftime("%Y%m%d", time.localtime())
-                                   + self.updated_image_increment)
+                                   + f'.{self.cfg.image_increment}')
 
         # Relevant major version items
-        self.arch = arch
-        self.arches = rlvars['allowed_arches']
-        self.release = rlvars['revision']
-        self.minor_version = rlvars['minor']
-        self.revision_level = rlvars['revision'] + "-" + rlvars['rclvl']
-        self.revision = rlvars['revision']
-        self.rclvl = rlvars['rclvl']
-        self.repos = rlvars['iso_map']['lorax']['repos']
-        self.extra_repos = rlvars['extra_repos']
-        self.repo_base_url = config['repo_base_url']
-        self.project_id = rlvars['project_id']
-        self.structure = rlvars['structure']
-        self.bugurl = rlvars['bugurl']
-
-        self.extra_files = rlvars['extra_files']
-        self.translators = config['translators']
-
-        self.container = config['container']
-        if 'container' in rlvars and len(rlvars['container']) > 0:
-            self.container = rlvars['container']
-
-        # all bucket related info
-        if s3_region:
-            self.s3_region = s3_region
-        else:
-            self.s3_region = config['aws_region']
-
-        if s3_bucket:
-            self.s3_bucket = s3_bucket
-        else:
-            self.s3_bucket = config['bucket']
-
-        if s3_bucket_url:
-            self.s3_bucket_url = s3_bucket_url
-        else:
-            self.s3_bucket_url = config['bucket_url']
+        self.revision_level = self.cfg.revision + "-" + self.cfg.rclvl
 
         # Templates
         file_loader = FileSystemLoader(f"{_rootdir}/templates")
         self.tmplenv = Environment(loader=file_loader)
 
+        # Work directory tree
+        self.compose_base = os.path.join(self.cfg.compose_root, self.cfg.major)
         self.compose_latest_dir = os.path.join(
-                config['compose_root'],
-                major,
-                f"latest-{self.shortname}-{self.profile}"
+                self.cfg.compose_base,
+                f"latest-{self.cfg.shortname}-{self.cfg.profile}"
         )
 
         self.compose_latest_sync = os.path.join(
@@ -152,7 +72,7 @@ class IsoBuild:
         )
 
         # This is temporary for now.
-        if logger is None:
+        if self.cfg.logger is None:
             self.log = logging.getLogger("iso")
             self.log.setLevel(logging.INFO)
             handler = logging.StreamHandler(sys.stdout)
@@ -166,25 +86,23 @@ class IsoBuild:
 
         self.log.info('iso build init')
         self.repolist = Shared.build_repo_list(
-                self.repo_base_url,
-                self.repos,
-                self.project_id,
-                self.current_arch,
+                self.cfg.repo_base_url,
+                self.cfg.iso_map.lorax.repos,
+                self.cfg.project_id,
+                self.cfg.arch,
                 self.compose_latest_sync,
-                self.compose_dir_is_here,
-                self.hashed,
-                self.extra_repos
+                self.cfg.local_compose,
+                self.cfg.hashed,
+                self.cfg.extra_repos
         )
         self.log.info(self.revision_level)
 
     def run(self):
-        sync_root = self.compose_latest_sync
-
         self.iso_build()
 
-        self.log.info('Compose repo directory: %s' % sync_root)
+        self.log.info('Compose repo directory: %s' % self.compose_latest_sync)
         self.log.info('ISO Build Logs: /var/lib/mock/{}-{}-{}/result'.format(
-            self.shortname.lower(), self.major_version, self.current_arch)
+            self.cfg.shortname.lower(), self.cfg.major, self.cfg.arch)
         )
         self.log.info('ISO Build completed.')
 
@@ -211,53 +129,53 @@ class IsoBuild:
         mock_sh_template = self.tmplenv.get_template('isobuild.tmpl.sh')
         iso_template = self.tmplenv.get_template('buildImage.tmpl.sh')
 
-        mock_iso_path = '/var/tmp/lorax-' + self.release + '.cfg'
+        mock_iso_path = '/var/tmp/lorax-' + self.cfg.revision + '.cfg'
         mock_sh_path = '/var/tmp/isobuild.sh'
         iso_template_path = '/var/tmp/buildImage.sh'
-        required_pkgs = self.iso_map['lorax']['required_pkgs']
+        required_pkgs = self.cfg.iso_map.lorax.required_pkgs
 
         rclevel = ''
-        if self.release_candidate:
-            rclevel = '-' + self.rclvl
+        if self.cfg.rc:
+            rclevel = '-' + self.cfg.rclvl
 
         mock_iso_template_output = mock_iso_template.render(
-                arch=self.current_arch,
-                major=self.major_version,
-                releasever=self.release,
-                fullname=self.fullname,
-                shortname=self.shortname,
+                arch=self.cfg.arch,
+                major=self.cfg.major,
+                releasever=self.cfg.revision,
+                fullname=self.cfg.fullname,
+                shortname=self.cfg.shortname,
                 required_pkgs=required_pkgs,
-                dist=self.disttag,
+                dist=self.cfg.disttag,
                 repos=self.repolist,
-                compose_dir_is_here=self.compose_dir_is_here,
-                compose_dir=self.compose_root,
+                compose_dir_is_here=self.cfg.local_compose,
+                compose_dir=self.cfg.compose_root,
         )
 
         mock_sh_template_output = mock_sh_template.render(
-                arch=self.current_arch,
-                major=self.major_version,
-                releasever=self.release,
-                isolation=self.mock_isolation,
-                builddir=self.mock_work_root,
-                shortname=self.shortname,
-                revision=self.release,
+                arch=self.cfg.arch,
+                major=self.cfg.major,
+                releasever=self.cfg.revision,
+                isolation=self.cfg.mock_isolation,
+                builddir=self.cfg.mock_work_root,
+                shortname=self.cfg.shortname,
+                revision=self.cfg.revision,
         )
 
         iso_template_output = iso_template.render(
-                arch=self.current_arch,
-                major=self.major_version,
-                minor=self.minor_version,
-                shortname=self.shortname,
+                arch=self.cfg.arch,
+                major=self.cfg.major,
+                minor=self.cfg.minor,
+                shortname=self.cfg.shortname,
                 repos=self.repolist,
-                variant=self.iso_map['lorax']['variant'],
-                lorax=self.iso_map['lorax']['lorax_removes'],
-                distname=self.distname,
-                revision=self.release,
+                variant=self.cfg.iso_map.lorax.variant,
+                lorax=self.cfg.iso_map.lorax.lorax_removes,
+                distname=self.cfg.distname,
+                revision=self.cfg.revision,
                 rc=rclevel,
-                builddir=self.mock_work_root,
+                builddir=self.cfg.mock_work_root,
                 lorax_work_root=self.lorax_result_root,
-                bugurl=self.bugurl,
-                squashfs_only=self.iso_map['lorax'].get('squashfs_only', None),
+                bugurl=self.cfg.bugurl,
+                squashfs_only=self.cfg.iso_map.lorax.get('squashfs_only', None),
         )
 
         with open(mock_iso_path, "w+") as mock_iso_entry:
@@ -292,27 +210,27 @@ class IsoBuild:
         """
         # Determine if we're only managing one architecture out of all of them.
         # It does not hurt to do everything at once. But the option is there.
-        arches_to_unpack = self.arches
-        if self.arch:
-            arches_to_unpack = [self.arch]
+        arches_to_unpack = self.cfg.allowed_arches
+        if self.cfg.build_arch:
+            arches_to_unpack = [self.cfg.build_arch]
 
         self.log.info(Color.INFO + 'Determining the latest pulls...')
-        if self.s3:
+        if self.cfg.s3:
             latest_artifacts = Shared.s3_determine_latest(
-                    self.s3_bucket,
-                    self.release,
-                    self.arches,
+                    self.cfg.s3_bucket,
+                    self.cfg.revision,
+                    self.cfg.allowed_arches,
                     'tar.gz',
                     'lorax',
                     'buildiso',
-                    self.translators,
+                    self.cfg.translators,
                     self.log
             )
         else:
             latest_artifacts = Shared.reqs_determine_latest(
-                    self.s3_bucket_url,
-                    self.release,
-                    self.arches,
+                    self.cfg.s3_bucket_url,
+                    self.cfg.revision,
+                    self.cfg.allowed_arches,
                     'tar.gz',
                     'lorax',
                     self.log
@@ -331,7 +249,7 @@ class IsoBuild:
 
             source_path = latest_artifacts[arch]
 
-            full_drop = f'{lorax_arch_dir}/lorax-{self.release}-{arch}.tar.gz'
+            full_drop = f'{lorax_arch_dir}/lorax-{self.cfg.revision}-{arch}.tar.gz'
 
             if not os.path.exists(lorax_arch_dir):
                 os.makedirs(lorax_arch_dir, exist_ok=True)
@@ -339,18 +257,18 @@ class IsoBuild:
             self.log.info(
                     'Downloading artifact for ' + Color.BOLD + arch + Color.END
             )
-            if self.s3:
+            if self.cfg.s3:
                 Shared.s3_download_artifacts(
-                        self.force_download,
-                        self.s3_bucket,
+                        self.cfg.force_download,
+                        self.cfg.s3_bucket,
                         source_path,
                         full_drop,
                         self.log
                 )
             else:
                 Shared.reqs_download_artifacts(
-                        self.force_download,
-                        self.s3_bucket_url,
+                        self.cfg.force_download,
+                        self.cfg.s3_bucket_url,
                         source_path,
                         full_drop,
                         self.log
@@ -359,7 +277,7 @@ class IsoBuild:
         self.log.info(Color.INFO + 'Beginning unpack phase...')
 
         for arch in arches_to_unpack:
-            tarname = f'lorax-{self.release}-{arch}.tar.gz'
+            tarname = f'lorax-{self.cfg.revision}-{arch}.tar.gz'
 
             tarball = os.path.join(
                     self.lorax_work_dir,
@@ -371,7 +289,7 @@ class IsoBuild:
                 self.log.error(Color.FAIL + 'Artifact does not exist: ' + tarball)
                 continue
 
-            self._unpack_artifacts(self.force_unpack, arch, tarball)
+            self._unpack_artifacts(self.cfg.force_unpack, arch, tarball)
 
         self.log.info(Color.INFO + 'Unpack phase completed')
         self.log.info(Color.INFO + 'Beginning image variant phase')
@@ -380,28 +298,28 @@ class IsoBuild:
             self.log.info(
                     'Copying base lorax for ' + Color.BOLD + arch + Color.END
             )
-            for variant in self.iso_map['images']:
-                self._copy_lorax_to_variant(self.force_unpack, arch, variant)
+            for variant in self.cfg.iso_map.images:
+                self._copy_lorax_to_variant(self.cfg.force_unpack, arch, variant)
 
-            self._copy_boot_to_work(self.force_unpack, arch)
+            self._copy_boot_to_work(self.cfg.force_unpack, arch)
 
         self.log.info(Color.INFO + 'Image variant phase completed')
 
         self.log.info(Color.INFO + 'Beginning treeinfo phase')
 
         for arch in arches_to_unpack:
-            for variant in self.iso_map['images']:
+            for variant in self.cfg.iso_map.images:
                 self.log.info(
                         'Configuring treeinfo and discinfo for %s%s %s%s' % (Color.BOLD, arch, variant, Color.END)
                 )
 
                 self._treeinfo_wrapper(arch, variant)
                 # Do a dirsync for non-disc data
-                if not self.iso_map['images'][variant]['disc']:
+                if not self.cfg.iso_map.images[variant].disc:
                     self.log.info(
                             'Syncing repo data and images for %s%s%s' % (Color.BOLD, variant, Color.END)
                     )
-                    self._copy_nondisc_to_repo(self.force_unpack, arch, variant)
+                    self._copy_nondisc_to_repo(self.cfg.force_unpack, arch, variant)
 
     def _unpack_artifacts(self, force_unpack, arch, tarball):
         """
@@ -450,7 +368,7 @@ class IsoBuild:
         except:
             self.log.error('%s already exists??' % image)
 
-        if self.iso_map['images'][image]['disc']:
+        if self.cfg.iso_map.images[image].disc:
             self.log.info('Removing boot.iso from %s' % image)
             try:
                 os.remove(path_to_image + '/images/boot.iso')
@@ -467,16 +385,16 @@ class IsoBuild:
         path_to_src_image = os.path.join(src_to_image, 'images/boot.iso')
 
         rclevel = ''
-        if self.release_candidate:
-            rclevel = '-' + self.rclvl
+        if self.cfg.rc:
+            rclevel = '-' + self.cfg.rclvl
 
-        discname = f'{self.shortname}-{self.release}{rclevel}-{arch}-boot.iso'
+        discname = f'{self.cfg.shortname}-{self.cfg.revision}{rclevel}-{arch}-boot.iso'
 
         isobootpath = os.path.join(iso_to_go, discname)
         manifest = f'{isobootpath}.manifest'
-        link_name = f'{self.shortname}-{arch}-boot.iso'
+        link_name = f'{self.cfg.shortname}-{arch}-boot.iso'
         link_manifest = link_name + '.manifest'
-        latest_link_name = f'{self.shortname}-{self.major_version}-latest-{arch}-boot.iso'
+        latest_link_name = f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-boot.iso'
         latest_link_manifest = latest_link_name + '.manifest'
         isobootpath = os.path.join(iso_to_go, discname)
         linkbootpath = os.path.join(iso_to_go, link_name)
@@ -515,7 +433,7 @@ class IsoBuild:
             os.symlink(manifest.split('/')[-1], latestmanifestlink)
 
         self.log.info('Creating checksum for %s boot iso...' % arch)
-        checksum = Shared.get_checksum(isobootpath, self.checksum, self.log)
+        checksum = Shared.get_checksum(isobootpath, self.cfg.checksum, self.log)
         if not checksum:
             self.log.error(Color.FAIL + isobootpath + ' not found! Are you sure we copied it?')
             return
@@ -523,7 +441,7 @@ class IsoBuild:
             c.write(checksum)
 
         # For Rocky-ARCH-boot.iso
-        linksum = Shared.get_checksum(linkbootpath, self.checksum, self.log)
+        linksum = Shared.get_checksum(linkbootpath, self.cfg.checksum, self.log)
         if not linksum:
             self.log.error(Color.FAIL + linkbootpath + ' not found! Did we actually make the symlink?')
             return
@@ -531,7 +449,7 @@ class IsoBuild:
             l.write(linksum)
 
         # For Rocky-X-latest-ARCH-boot.iso
-        latestlinksum = Shared.get_checksum(latestlinkbootpath, self.checksum, self.log)
+        latestlinksum = Shared.get_checksum(latestlinkbootpath, self.cfg.checksum, self.log)
         if not latestlinksum:
             self.log.error(Color.FAIL + latestlinkbootpath + ' not found! Did we actually make the symlink?')
             return
@@ -607,7 +525,7 @@ class IsoBuild:
         5. Modify (1) .treeinfo, keep out boot.iso checksum
         6. Create a .treeinfo for AppStream
         """
-        self._sync_boot(force_unpack=self.force_unpack, arch=self.arch, image=None)
+        self._sync_boot(force_unpack=self.cfg.force_unpack, arch=self.cfg.build_arch, image=None)
 
     def _sync_boot(self, force_unpack, arch, image):
         """
@@ -624,16 +542,16 @@ class IsoBuild:
         is for basic use. Eventually it'll be expanded to handle this scenario.
         """
         image = os.path.join(self.lorax_work_dir, arch, variant)
-        imagemap = self.iso_map['images'][variant]
+        imagemap = self.cfg.iso_map.images[variant]
         data = {
                 'arch': arch,
                 'variant': variant,
                 'variant_path': image,
-                'checksum': self.checksum,
-                'distname': self.distname,
-                'fullname': self.fullname,
-                'shortname': self.shortname,
-                'release': self.release,
+                'checksum': self.cfg.checksum,
+                'distname': self.cfg.distname,
+                'fullname': self.cfg.fullname,
+                'shortname': self.cfg.shortname,
+                'release': self.cfg.revision,
                 'timestamp': self.timestamp,
         }
 
@@ -674,24 +592,24 @@ class IsoBuild:
                 'work'
         )
 
-        arches_to_build = self.arches
-        if self.arch:
-            arches_to_build = [self.arch]
+        arches_to_build = self.cfg.allowed_arches
+        if self.cfg.build_arch:
+            arches_to_build = [self.cfg.build_arch]
 
-        images_to_build = list(self.iso_map['images'].keys())
-        if self.extra_iso:
-            images_to_build = [self.extra_iso]
+        images_to_build = list(self.cfg.iso_map.images.keys())
+        if self.cfg.extra_iso:
+            images_to_build = [self.cfg.extra_iso]
 
         images_to_skip = []
 
         for y in images_to_build:
-            if 'isoskip' in self.iso_map['images'][y] and self.iso_map['images'][y]['isoskip']:
+            if 'isoskip' in self.cfg.iso_map.images[y] and self.cfg.iso_map.images[y].isoskip:
                 self.log.info(Color.WARN + f'Skipping {y} image')
                 images_to_skip.append(y)
                 continue
 
             reposcan = True
-            if 'reposcan' in self.iso_map['images'][y] and not self.iso_map['images'][y]['reposcan']:
+            if 'reposcan' in self.cfg.iso_map.images[y] and not self.cfg.iso_map.images[y].reposcan:
                 self.log.info(Color.WARN + f"Skipping compose repository scans for {y}")
                 reposcan = False
 
@@ -710,7 +628,7 @@ class IsoBuild:
                 grafts = self._generate_graft_points(
                         a,
                         y,
-                        self.iso_map['images'][y]['repos'],
+                        self.cfg.iso_map.images[y].repos,
                         reposcan=reposcan
                 )
                 try:
@@ -720,15 +638,15 @@ class IsoBuild:
                     self.log.error(Color.FAIL + f'Error: {exc}')
                     continue
 
-                if self.extra_iso_mode == 'local':
+                if self.cfg.extra_iso_mode == 'local':
                     self._extra_iso_local_run(a, y, work_root)
-                elif self.extra_iso_mode == 'podman':
+                elif self.cfg.extra_iso_mode == 'podman':
                     continue
                 else:
                     self.log.error(Color.FAIL + 'Mode specified is not valid.')
                     raise SystemExit()
 
-        if self.extra_iso_mode == 'podman':
+        if self.cfg.extra_iso_mode == 'podman':
             # I can't think of a better way to do this
             images_to_build_podman = images_to_build.copy()
             for item in images_to_build_podman[:]:
@@ -753,7 +671,7 @@ class IsoBuild:
         xorriso_template = self.tmplenv.get_template('xorriso.tmpl.txt')
         iso_readme_template = self.tmplenv.get_template('ISOREADME.tmpl')
 
-        mock_iso_path = f'/var/tmp/lorax-{self.major_version}.cfg'
+        mock_iso_path = f'/var/tmp/lorax-{self.cfg.major}.cfg'
         mock_sh_path = f'{entries_dir}/extraisobuild-{arch}-{image}.sh'
         iso_template_path = f'{entries_dir}/buildExtraImage-{arch}-{image}.sh'
         xorriso_template_path = f'{entries_dir}/xorriso-{arch}-{image}.txt'
@@ -762,7 +680,7 @@ class IsoBuild:
         log_root = os.path.join(
                 work_root,
                 "logs",
-                self.date_stamp
+                self.cfg.date_stamp
         )
 
         if not os.path.exists(log_root):
@@ -771,18 +689,18 @@ class IsoBuild:
         log_path_command = f'| tee -a {log_root}/{arch}-{image}.log'
 
         rclevel = ''
-        if self.release_candidate:
-            rclevel = '-' + self.rclvl
+        if self.cfg.rc:
+            rclevel = '-' + self.cfg.rclvl
 
         datestamp = ''
-        if self.updated_image:
+        if self.cfg.updated_image:
             datestamp = '-' + self.updated_image_date
 
         volid = Idents.get_vol_id(boot_iso)
-        isoname = f'{self.shortname}-{self.release}{rclevel}{datestamp}-{arch}-{image}.iso'
-        generic_isoname = f'{self.shortname}-{arch}-{image}.iso'
-        latest_isoname = f'{self.shortname}-{self.major_version}-latest-{arch}-{image}.iso'
-        required_pkgs = self.iso_map['lorax']['required_pkgs']
+        isoname = f'{self.cfg.shortname}-{self.cfg.revision}{rclevel}{datestamp}-{arch}-{image}.iso'
+        generic_isoname = f'{self.cfg.shortname}-{arch}-{image}.iso'
+        latest_isoname = f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-{image}.iso'
+        required_pkgs = self.cfg.iso_map.lorax.required_pkgs
 
         if not volid:
             raise ValueError('Volume ID could not be determined')
@@ -793,25 +711,25 @@ class IsoBuild:
         )
 
         mock_iso_template_output = mock_iso_template.render(
-                arch=self.current_arch,
-                major=self.major_version,
-                releasever=self.release,
-                fullname=self.fullname,
-                shortname=self.shortname,
+                arch=self.cfg.arch,
+                major=self.cfg.major,
+                releasever=self.cfg.revision,
+                fullname=self.cfg.fullname,
+                shortname=self.cfg.shortname,
                 required_pkgs=required_pkgs,
-                dist=self.disttag,
+                dist=self.cfg.disttag,
                 repos=self.repolist,
                 compose_dir_is_here=True,
-                compose_dir=self.compose_root,
+                compose_dir=self.cfg.compose_root,
         )
 
         mock_sh_template_output = mock_sh_template.render(
-                arch=self.current_arch,
-                major=self.major_version,
-                releasever=self.release,
-                isolation=self.mock_isolation,
-                builddir=self.mock_work_root,
-                shortname=self.shortname,
+                arch=self.cfg.arch,
+                major=self.cfg.major,
+                releasever=self.cfg.revision,
+                isolation=self.cfg.mock_isolation,
+                builddir=self.cfg.mock_work_root,
+                shortname=self.cfg.shortname,
                 isoname=isoname,
                 entries_dir=entries_dir,
                 image=image,
@@ -840,7 +758,7 @@ class IsoBuild:
         make_manifest = Shared.get_manifest_cmd(isoname)
 
         iso_template_output = iso_template.render(
-                extra_iso_mode=self.extra_iso_mode,
+                extra_iso_mode=self.cfg.extra_iso_mode,
                 arch=arch,
                 compose_work_iso_dir=self.iso_work_dir,
                 make_image=make_image,
@@ -905,7 +823,7 @@ class IsoBuild:
         checksum_list = []
 
         datestamp = ''
-        if self.updated_image:
+        if self.cfg.updated_image:
             datestamp = '-' + self.updated_image_date
 
         for i in images:
@@ -917,13 +835,13 @@ class IsoBuild:
                 entry_name_list.append(entry_name)
 
                 rclevel = ''
-                if self.release_candidate:
-                    rclevel = '-' + self.rclvl
+                if self.cfg.rc:
+                    rclevel = '-' + self.cfg.rclvl
 
                 isoname = '{}/{}-{}{}{}-{}-{}.iso'.format(
                         a,
-                        self.shortname,
-                        self.revision,
+                        self.cfg.shortname,
+                        self.cfg.revision,
                         rclevel,
                         datestamp,
                         a,
@@ -932,15 +850,15 @@ class IsoBuild:
 
                 genericname = '{}/{}-{}-{}.iso'.format(
                         a,
-                        self.shortname,
+                        self.cfg.shortname,
                         a,
                         i
                 )
 
                 latestname = '{}/{}-{}-latest-{}-{}.iso'.format(
                         a,
-                        self.shortname,
-                        self.major_version,
+                        self.cfg.shortname,
+                        self.cfg.major,
                         a,
                         i
                 )
@@ -952,14 +870,14 @@ class IsoBuild:
             for pod in entry_name_list:
                 podman_cmd_entry = '{} run -d -it --security-opt label=disable -v "{}:{}" -v "{}:{}" --name {} --entrypoint {}/{} {}'.format(
                         cmd,
-                        self.compose_root,
-                        self.compose_root,
+                        self.cfg.compose_root,
+                        self.cfg.compose_root,
                         entries_dir,
                         entries_dir,
                         pod,
                         entries_dir,
                         pod,
-                        self.container
+                        self.cfg.container
                 )
 
                 subprocess.call(
@@ -1009,7 +927,7 @@ class IsoBuild:
                 path = os.path.join(isos_dir, p)
                 if os.path.exists(path):
                     self.log.info(Color.INFO + 'Performing checksum for ' + p)
-                    checksum = Shared.get_checksum(path, self.checksum, self.log)
+                    checksum = Shared.get_checksum(path, self.cfg.checksum, self.log)
                     if not checksum:
                         self.log.error(Color.FAIL + path + ' not found! Are you sure it was built?')
                     with open(path + '.CHECKSUM', "w+") as c:
@@ -1070,13 +988,13 @@ class IsoBuild:
                         self.compose_latest_sync,
                         repo,
                         arch,
-                        self.structure['packages']
+                        self.cfg.structure.packages
                 )
                 rd_for_var = os.path.join(
                         self.compose_latest_sync,
                         repo,
                         arch,
-                        self.structure['repodata']
+                        self.cfg.structure.repodata
                 )
 
                 for k, v in self._get_grafts([pkg_for_var]).items():
@@ -1211,12 +1129,12 @@ class IsoBuild:
         to be. This relies on a list called "cloudimages" in the version
         configuration.
         """
-        arches_to_unpack = self.arches
+        arches_to_unpack = self.cfg.allowed_arches
         latest_artifacts = {}
-        if self.arch:
-            arches_to_unpack = [self.arch]
+        if self.cfg.build_arch:
+            arches_to_unpack = [self.cfg.build_arch]
 
-        for name, extra in self.cloudimages['images'].items():
+        for name, extra in self.cfg.cloudimages.images.items():
             self.log.info(Color.INFO + 'Determining the latest images for ' + name + ' ...')
             formattype = extra['format']
             latest_artifacts[name] = {}
@@ -1232,22 +1150,22 @@ class IsoBuild:
                 if variant:
                     variantname = f"{name}-{variant}"
                     self.log.info(Color.INFO + 'Getting latest for variant ' + variant + ' ...')
-                if self.s3:
+                if self.cfg.s3:
                     latest_artifacts[name][variantname] = Shared.s3_determine_latest(
-                            self.s3_bucket,
-                            self.release,
+                            self.cfg.s3_bucket,
+                            self.cfg.revision,
                             arches_to_unpack,
                             formattype,
                             variantname,
                             'buildimage',
-                            self.translators,
+                            self.cfg.translators,
                             self.log
                     )
 
                 else:
                     latest_artifacts[name][variantname] = Shared.reqs_determine_latest(
-                            self.s3_bucket_url,
-                            self.release,
+                            self.cfg.s3_bucket_url,
+                            self.cfg.revision,
                             arches_to_unpack,
                             formattype,
                             variantname,
@@ -1307,25 +1225,25 @@ class IsoBuild:
                         os.makedirs(image_arch_dir, exist_ok=True)
 
                     self.log.info('Downloading artifact for ' + Color.BOLD + arch + Color.END)
-                    if self.s3:
+                    if self.cfg.s3:
                         Shared.s3_download_artifacts(
-                                self.force_download,
-                                self.s3_bucket,
+                                self.cfg.force_download,
+                                self.cfg.s3_bucket,
                                 source_path,
                                 full_drop,
                                 self.log
                         )
                     else:
                         Shared.reqs_download_artifacts(
-                                self.force_download,
-                                self.s3_bucket_url,
+                                self.cfg.force_download,
+                                self.cfg.s3_bucket_url,
                                 source_path,
                                 full_drop,
                                 self.log
                         )
 
                     self.log.info('Creating checksum ...')
-                    checksum = Shared.get_checksum(full_drop, self.checksum, self.log)
+                    checksum = Shared.get_checksum(full_drop, self.cfg.checksum, self.log)
                     if not checksum:
                         self.log.error(Color.FAIL + full_drop + ' not found! Are you sure we copied it?')
                         continue
@@ -1335,8 +1253,8 @@ class IsoBuild:
                     self.log.info('Creating a symlink to latest image...')
                     latest_name = '{}/{}-{}-{}.latest.{}.{}'.format(
                             image_arch_dir,
-                            self.shortname,
-                            self.major_version,
+                            self.cfg.shortname,
+                            self.cfg.major,
                             imgname,
                             arch,
                             filetype
@@ -1344,8 +1262,8 @@ class IsoBuild:
                     latest_path = latest_name.split('/')[-1]
                     latest_checksum = '{}/{}-{}-{}.latest.{}.{}.CHECKSUM'.format(
                             image_arch_dir,
-                            self.shortname,
-                            self.major_version,
+                            self.cfg.shortname,
+                            self.cfg.major,
                             imgname,
                             arch,
                             filetype
@@ -1373,16 +1291,16 @@ class IsoBuild:
                         # If an image is the primary, we set this.
                         latest_primary_name = '{}/{}-{}-{}.latest.{}.{}'.format(
                                 image_arch_dir,
-                                self.shortname,
-                                self.major_version,
+                                self.cfg.shortname,
+                                self.cfg.major,
                                 keyname,
                                 arch,
                                 filetype
                         )
                         latest_primary_checksum = '{}/{}-{}-{}.latest.{}.{}.CHECKSUM'.format(
                                 image_arch_dir,
-                                self.shortname,
-                                self.major_version,
+                                self.cfg.shortname,
+                                self.cfg.major,
                                 keyname,
                                 arch,
                                 filetype

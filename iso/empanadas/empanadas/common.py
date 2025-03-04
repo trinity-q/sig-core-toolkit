@@ -96,6 +96,17 @@ for conf in glob.iglob(f"{_rootdir}/sig/*.yaml"):
         sigdict.update(yaml.safe_load(file))
 
 
+def collect_config(args):
+    cfg = AttributeDict(config)
+    cfg.update(rldict[args.release])
+
+    # Unless there is a default for a command-line argument, whatever
+    # is not specified will be None.  We only want to replace existing
+    # args if there is an actual value.  Otherwise, we'll add in empty
+    # items, because their presence may be required.
+    cfg.update({k: v for k, v in vars(args) if k not in cfg or v is not None})
+
+    return cfg
 
 
 ALLOWED_TYPE_VARIANTS = {
