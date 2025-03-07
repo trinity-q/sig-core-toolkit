@@ -34,8 +34,6 @@ class IsoBuild:
         # Relevant config items
         self.timestamp = time.time()
         self.lorax_result_root = self.cfg.mock_work_root + "/" + "lorax"
-        self.updated_image_date = (time.strftime("%Y%m%d", time.localtime())
-                                   + f'.{self.cfg.image_increment}')
 
         # Relevant major version items
         self.revision_level = self.cfg.revision + "-" + self.cfg.rclvl
@@ -96,6 +94,13 @@ class IsoBuild:
                 self.cfg.extra_repos
         )
         self.log.info(self.revision_level)
+
+    @property
+    def updated_image_date(self):
+        if self.cfg.updated_image:
+            return (time.strftime('-%Y%m%d', time.localtime())
+                    + f'.{self.cfg.image_increment}')
+        return ''
 
     @property
     def rclevel(self):
@@ -686,12 +691,8 @@ class IsoBuild:
 
         log_path_command = f'| tee -a {log_root}/{arch}-{image}.log'
 
-        datestamp = ''
-        if self.cfg.updated_image:
-            datestamp = '-' + self.updated_image_date
-
         volid = Idents.get_vol_id(boot_iso)
-        isoname = f'{self.cfg.shortname}-{self.cfg.revision}{self.rclevel}{datestamp}-{arch}-{image}.iso'
+        isoname = f'{self.cfg.shortname}-{self.cfg.revision}{self.rclevel}{self.updated_image_date}-{arch}-{image}.iso'
         generic_isoname = f'{self.cfg.shortname}-{arch}-{image}.iso'
         latest_isoname = f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-{image}.iso'
         required_pkgs = self.cfg.iso_map.lorax.required_pkgs
@@ -816,10 +817,6 @@ class IsoBuild:
         bad_exit_list = []
         checksum_list = []
 
-        datestamp = ''
-        if self.cfg.updated_image:
-            datestamp = '-' + self.updated_image_date
-
         for i in images:
             entry_name_list = []
             arch_sync = arches.copy()
@@ -833,7 +830,7 @@ class IsoBuild:
                         self.cfg.shortname,
                         self.cfg.revision,
                         self.rclevel,
-                        datestamp,
+                        self.updated_image_date,
                         a,
                         i
                 )
