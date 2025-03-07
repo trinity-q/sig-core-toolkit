@@ -136,15 +136,9 @@ class IsoBuild:
         package up the results.
         """
         self.log.info('Generating ISO configuration and scripts')
-        mock_iso_template = self.tmplenv.get_template('isomock.tmpl.cfg')
-        mock_sh_template = self.tmplenv.get_template('isobuild.tmpl.sh')
-        iso_template = self.tmplenv.get_template('buildImage.tmpl.sh')
-
-        mock_iso_path = '/var/tmp/lorax-' + self.cfg.revision + '.cfg'
-        mock_sh_path = '/var/tmp/isobuild.sh'
-        iso_template_path = '/var/tmp/buildImage.sh'
         required_pkgs = self.cfg.iso_map.lorax.required_pkgs
 
+        mock_iso_template = self.tmplenv.get_template('isomock.tmpl.cfg')
         mock_iso_template_output = mock_iso_template.render(
                 arch=self.cfg.arch,
                 major=self.cfg.major,
@@ -157,7 +151,11 @@ class IsoBuild:
                 compose_dir_is_here=self.cfg.local_compose,
                 compose_dir=self.cfg.compose_root,
         )
+        mock_iso_path = '/var/tmp/lorax-' + self.cfg.revision + '.cfg'
+        with open(mock_iso_path, "w+") as mock_iso_entry:
+            mock_iso_entry.write(mock_iso_template_output)
 
+        mock_sh_template = self.tmplenv.get_template('isobuild.tmpl.sh')
         mock_sh_template_output = mock_sh_template.render(
                 arch=self.cfg.arch,
                 major=self.cfg.major,
@@ -167,7 +165,12 @@ class IsoBuild:
                 shortname=self.cfg.shortname,
                 revision=self.cfg.revision,
         )
+        mock_sh_path = '/var/tmp/isobuild.sh'
+        with open(mock_sh_path, "w+") as mock_sh_entry:
+            mock_sh_entry.write(mock_sh_template_output)
+        os.chmod(mock_sh_path, 0o755)
 
+        iso_template = self.tmplenv.get_template('buildImage.tmpl.sh')
         iso_template_output = iso_template.render(
                 arch=self.cfg.arch,
                 major=self.cfg.major,
@@ -184,17 +187,9 @@ class IsoBuild:
                 bugurl=self.cfg.bugurl,
                 squashfs_only=self.cfg.iso_map.lorax.get('squashfs_only', None),
         )
-
-        with open(mock_iso_path, "w+") as mock_iso_entry:
-            mock_iso_entry.write(mock_iso_template_output)
-
-        with open(mock_sh_path, "w+") as mock_sh_entry:
-            mock_sh_entry.write(mock_sh_template_output)
-
+        iso_template_path = '/var/tmp/buildImage.sh'
         with open(iso_template_path, "w+") as iso_template_entry:
             iso_template_entry.write(iso_template_output)
-
-        os.chmod(mock_sh_path, 0o755)
         os.chmod(iso_template_path, 0o755)
 
     def run_lorax(self):
@@ -668,18 +663,6 @@ class IsoBuild:
 
         entries_dir = os.path.join(work_root, "entries")
         boot_iso = os.path.join(work_root, "lorax", arch, "lorax/images/boot.iso")
-        mock_iso_template = self.tmplenv.get_template('isomock.tmpl.cfg')
-        mock_sh_template = self.tmplenv.get_template('extraisobuild.tmpl.sh')
-        iso_template = self.tmplenv.get_template('buildExtraImage.tmpl.sh')
-        xorriso_template = self.tmplenv.get_template('xorriso.tmpl.txt')
-        iso_readme_template = self.tmplenv.get_template('ISOREADME.tmpl')
-
-        mock_iso_path = f'/var/tmp/lorax-{self.cfg.major}.cfg'
-        mock_sh_path = f'{entries_dir}/extraisobuild-{arch}-{image}.sh'
-        iso_template_path = f'{entries_dir}/buildExtraImage-{arch}-{image}.sh'
-        xorriso_template_path = f'{entries_dir}/xorriso-{arch}-{image}.txt'
-        iso_readme_path = f'{self.iso_work_dir}/{arch}/README'
-
         log_root = os.path.join(
                 work_root,
                 "logs",
@@ -705,6 +688,7 @@ class IsoBuild:
                 log_path_command
         )
 
+        mock_iso_template = self.tmplenv.get_template('isomock.tmpl.cfg')
         mock_iso_template_output = mock_iso_template.render(
                 arch=self.cfg.arch,
                 major=self.cfg.major,
@@ -717,7 +701,11 @@ class IsoBuild:
                 compose_dir_is_here=True,
                 compose_dir=self.cfg.compose_root,
         )
+        mock_iso_path = f'/var/tmp/lorax-{self.cfg.major}.cfg'
+        with open(mock_iso_path, "w+") as mock_iso_entry:
+            mock_iso_entry.write(mock_iso_template_output)
 
+        mock_sh_template = self.tmplenv.get_template('extraisobuild.tmpl.sh')
         mock_sh_template_output = mock_sh_template.render(
                 arch=self.cfg.arch,
                 major=self.cfg.major,
@@ -729,12 +717,17 @@ class IsoBuild:
                 entries_dir=entries_dir,
                 image=image,
         )
+        mock_sh_path = f'{entries_dir}/extraisobuild-{arch}-{image}.sh'
+        with open(mock_sh_path, "w+") as mock_sh_entry:
+            mock_sh_entry.write(mock_sh_template_output)
+        os.chmod(mock_sh_path, 0o755)
 
         self.log.info(Color.INFO + f'boot.iso volume name: {volid}')
 
         # Generate a xorriso compatible dialog
         with open(grafts) as xp:
             xorpoint = xp.read()
+        xorriso_template = self.tmplenv.get_template('xorriso.tmpl.txt')
         xorriso_template_output = xorriso_template.render(
                 boot_iso=boot_iso,
                 isoname=isoname,
@@ -742,6 +735,7 @@ class IsoBuild:
                 graft=xorpoint,
                 arch=arch,
         )
+        xorriso_template_path = f'{entries_dir}/xorriso-{arch}-{image}.txt'
         with open(xorriso_template_path, "w+") as xorriso_template_entry:
             xorriso_template_entry.write(xorriso_template_output)
 
@@ -752,6 +746,7 @@ class IsoBuild:
         implantmd5 = Shared.get_implantisomd5_cmd(isoname)
         make_manifest = Shared.get_manifest_cmd(isoname)
 
+        iso_template = self.tmplenv.get_template('buildExtraImage.tmpl.sh')
         iso_template_output = iso_template.render(
                 extra_iso_mode=self.cfg.extra_iso_mode,
                 arch=arch,
@@ -764,25 +759,19 @@ class IsoBuild:
                 generic_isoname=generic_isoname,
                 latest_isoname=latest_isoname,
         )
+        iso_template_path = f'{entries_dir}/buildExtraImage-{arch}-{image}.sh'
+        with open(iso_template_path, "w+") as iso_template_entry:
+            iso_template_entry.write(iso_template_output)
+        os.chmod(iso_template_path, 0o755)
 
+        iso_readme_template = self.tmplenv.get_template('ISOREADME.tmpl')
         iso_readme_template_output = iso_readme_template.render(
                 arch=arch
         )
-
-        with open(mock_iso_path, "w+") as mock_iso_entry:
-            mock_iso_entry.write(mock_iso_template_output)
-
-        with open(mock_sh_path, "w+") as mock_sh_entry:
-            mock_sh_entry.write(mock_sh_template_output)
-
-        with open(iso_template_path, "w+") as iso_template_entry:
-            iso_template_entry.write(iso_template_output)
-
+        iso_readme_path = f'{self.iso_work_dir}/{arch}/README'
         with open(iso_readme_path, "w+") as iso_readme_entry:
             iso_readme_entry.write(iso_readme_template_output)
 
-        os.chmod(mock_sh_path, 0o755)
-        os.chmod(iso_template_path, 0o755)
 
     def _extra_iso_local_run(self, arch, image, work_root):
         """
