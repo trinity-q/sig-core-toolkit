@@ -97,6 +97,12 @@ class IsoBuild:
         )
         self.log.info(self.revision_level)
 
+    @property
+    def rclevel(self):
+        if self.cfg.rc:
+            return f'-{self.cfg.rclvl}'
+        return ''
+
     def run(self):
         self.iso_build()
 
@@ -134,10 +140,6 @@ class IsoBuild:
         iso_template_path = '/var/tmp/buildImage.sh'
         required_pkgs = self.cfg.iso_map.lorax.required_pkgs
 
-        rclevel = ''
-        if self.cfg.rc:
-            rclevel = '-' + self.cfg.rclvl
-
         mock_iso_template_output = mock_iso_template.render(
                 arch=self.cfg.arch,
                 major=self.cfg.major,
@@ -171,7 +173,7 @@ class IsoBuild:
                 lorax=self.cfg.iso_map.lorax.lorax_removes,
                 distname=self.cfg.distname,
                 revision=self.cfg.revision,
-                rc=rclevel,
+                rc=self.rclevel,
                 builddir=self.cfg.mock_work_root,
                 lorax_work_root=self.lorax_result_root,
                 bugurl=self.cfg.bugurl,
@@ -384,11 +386,7 @@ class IsoBuild:
         iso_to_go = os.path.join(self.iso_work_dir, arch)
         path_to_src_image = os.path.join(src_to_image, 'images/boot.iso')
 
-        rclevel = ''
-        if self.cfg.rc:
-            rclevel = '-' + self.cfg.rclvl
-
-        discname = f'{self.cfg.shortname}-{self.cfg.revision}{rclevel}-{arch}-boot.iso'
+        discname = f'{self.cfg.shortname}-{self.cfg.revision}{self.rclevel}-{arch}-boot.iso'
 
         isobootpath = os.path.join(iso_to_go, discname)
         manifest = f'{isobootpath}.manifest'
@@ -688,16 +686,12 @@ class IsoBuild:
 
         log_path_command = f'| tee -a {log_root}/{arch}-{image}.log'
 
-        rclevel = ''
-        if self.cfg.rc:
-            rclevel = '-' + self.cfg.rclvl
-
         datestamp = ''
         if self.cfg.updated_image:
             datestamp = '-' + self.updated_image_date
 
         volid = Idents.get_vol_id(boot_iso)
-        isoname = f'{self.cfg.shortname}-{self.cfg.revision}{rclevel}{datestamp}-{arch}-{image}.iso'
+        isoname = f'{self.cfg.shortname}-{self.cfg.revision}{self.rclevel}{datestamp}-{arch}-{image}.iso'
         generic_isoname = f'{self.cfg.shortname}-{arch}-{image}.iso'
         latest_isoname = f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-{image}.iso'
         required_pkgs = self.cfg.iso_map.lorax.required_pkgs
@@ -834,15 +828,11 @@ class IsoBuild:
                 entry_name = f'buildExtraImage-{a}-{i}.sh'
                 entry_name_list.append(entry_name)
 
-                rclevel = ''
-                if self.cfg.rc:
-                    rclevel = '-' + self.cfg.rclvl
-
                 isoname = '{}/{}-{}{}{}-{}-{}.iso'.format(
                         a,
                         self.cfg.shortname,
                         self.cfg.revision,
-                        rclevel,
+                        self.rclevel,
                         datestamp,
                         a,
                         i
