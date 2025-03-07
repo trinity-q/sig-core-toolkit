@@ -654,6 +654,18 @@ class IsoBuild:
 
             self._extra_iso_podman_run(arches_to_build, images_to_build_podman, work_root)
 
+    def _generate_iso_names(self, boot_iso, arch, image):
+        volid = Idents.get_vol_id(boot_iso)
+        if not volid:
+            raise ValueError('Volume ID could not be determined')
+        self.log.info(Color.INFO + f'boot.iso volume name: {volid}')
+
+        return {
+            'main': f'{self.cfg.shortname}-{self.cfg.revision}{self.rclevel}{self.updated_image_date}-{arch}-{image}.iso',
+            'generic': f'{self.cfg.shortname}-{arch}-{image}.iso',
+            'latest': f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-{image}.iso'
+        }
+
     def _extra_iso_local_config(self, arch, image, grafts, work_root):
         """
         Local ISO build configuration - This generates the configuration for
@@ -672,17 +684,10 @@ class IsoBuild:
         if not os.path.exists(log_root):
             os.makedirs(log_root, exist_ok=True)
 
+        isonames = self._generate_iso_names(boot_iso, arch, image)
+
         log_path_command = f'| tee -a {log_root}/{arch}-{image}.log'
-
-        volid = Idents.get_vol_id(boot_iso)
-        isoname = f'{self.cfg.shortname}-{self.cfg.revision}{self.rclevel}{self.updated_image_date}-{arch}-{image}.iso'
-        generic_isoname = f'{self.cfg.shortname}-{arch}-{image}.iso'
-        latest_isoname = f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-{image}.iso'
         required_pkgs = self.cfg.iso_map.lorax.required_pkgs
-
-        if not volid:
-            raise ValueError('Volume ID could not be determined')
-
         lorax_pkg_cmd = '/usr/bin/dnf install {} -y {}'.format(
                 ' '.join(required_pkgs),
                 log_path_command
@@ -713,7 +718,7 @@ class IsoBuild:
                 isolation=self.cfg.mock_isolation,
                 builddir=self.cfg.mock_work_root,
                 shortname=self.cfg.shortname,
-                isoname=isoname,
+                isoname=isonames['main'],
                 entries_dir=entries_dir,
                 image=image,
         )
@@ -722,15 +727,13 @@ class IsoBuild:
             mock_sh_entry.write(mock_sh_template_output)
         os.chmod(mock_sh_path, 0o755)
 
-        self.log.info(Color.INFO + f'boot.iso volume name: {volid}')
-
         # Generate a xorriso compatible dialog
         with open(grafts) as xp:
             xorpoint = xp.read()
         xorriso_template = self.tmplenv.get_template('xorriso.tmpl.txt')
         xorriso_template_output = xorriso_template.render(
                 boot_iso=boot_iso,
-                isoname=isoname,
+                isoname=isonames['main'],
                 volid=volid,
                 graft=xorpoint,
                 arch=arch,
@@ -755,9 +758,9 @@ class IsoBuild:
                 implantmd5=implantmd5,
                 make_manifest=make_manifest,
                 lorax_pkg_cmd=lorax_pkg_cmd,
-                isoname=isoname,
-                generic_isoname=generic_isoname,
-                latest_isoname=latest_isoname,
+                isoname=isonames['main'],
+                generic_isoname=isonames['generic'],
+                latest_isoname=isonames['latest'],
         )
         iso_template_path = f'{entries_dir}/buildExtraImage-{arch}-{image}.sh'
         with open(iso_template_path, "w+") as iso_template_entry:
