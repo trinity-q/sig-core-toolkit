@@ -618,9 +618,8 @@ class IsoBuild:
                     # do we need to do a hard exit here?
                     raise SystemExit()
 
-                grafts = self._generate_graft_points(a, y)
                 try:
-                    self._extra_iso_local_config(a, y, grafts, work_root)
+                    self._extra_iso_local_config(a, y, work_root)
                 except ValueError as exc:
                     self.log.error(Color.FAIL + f'An error occured while configuring extra ISO build {exc}')
                     self.log.error(Color.FAIL + f'Error: {exc}')
@@ -656,7 +655,7 @@ class IsoBuild:
             'latest': f'{self.cfg.shortname}-{self.cfg.major}-latest-{arch}-{image}.iso'
         }
 
-    def _extra_iso_local_config(self, arch, image, grafts, work_root):
+    def _extra_iso_local_config(self, arch, image, work_root):
         """
         Local ISO build configuration - This generates the configuration for
         both mock and podman entries
@@ -718,6 +717,7 @@ class IsoBuild:
         os.chmod(mock_sh_path, 0o755)
 
         # Generate a xorriso compatible dialog
+        grafts = self._generate_graft_points(arch, image)
         with open(grafts) as xp:
             xorpoint = xp.read()
         xorriso_template = self.tmplenv.get_template('xorriso.tmpl.txt')
