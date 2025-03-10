@@ -606,11 +606,6 @@ class IsoBuild:
                 images_to_skip.append(y)
                 continue
 
-            reposcan = True
-            if 'reposcan' in self.cfg.iso_map.images[y] and not self.cfg.iso_map.images[y].reposcan:
-                self.log.info(Color.WARN + f"Skipping compose repository scans for {y}")
-                reposcan = False
-
             for a in arches_to_build:
                 lorax_path = os.path.join(self.lorax_work_dir, a, 'lorax', '.treeinfo')
                 image_path = os.path.join(self.lorax_work_dir, a, y, '.treeinfo')
@@ -626,8 +621,7 @@ class IsoBuild:
                 grafts = self._generate_graft_points(
                         a,
                         y,
-                        self.cfg.iso_map.images[y].repos,
-                        reposcan=reposcan
+                        self.cfg.iso_map.images[y].repos
                 )
                 try:
                     self._extra_iso_local_config(a, y, grafts, work_root)
@@ -928,8 +922,7 @@ class IsoBuild:
             self,
             arch,
             iso,
-            variants,
-            reposcan: bool = True,
+            variants
         ):
         """
         Get a list of packages for an extras ISO. This should NOT be called
@@ -960,7 +953,7 @@ class IsoBuild:
         files = self._get_grafts([lorax_for_var, extra_files_for_var])
 
         # Some variants cannot go through a proper scan.
-        if reposcan:
+        if self.cfg.iso_map.images[iso].get('reposcan', True):
             # This is to get all the packages for each repo
             for repo in variants:
                 pkg_for_var = os.path.join(
@@ -981,6 +974,8 @@ class IsoBuild:
 
                 for k, v in self._get_grafts([rd_for_var]).items():
                     files[os.path.join(repo, "repodata", k)] = v
+        else:
+            self.log.info(Color.WARN + f"Skipping compose repository scans for {iso}")
 
         xorrs = f'{lorax_base_dir}/xorriso-{iso}-{arch}.txt'
 
