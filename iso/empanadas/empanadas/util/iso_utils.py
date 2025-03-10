@@ -618,11 +618,7 @@ class IsoBuild:
                     # do we need to do a hard exit here?
                     raise SystemExit()
 
-                grafts = self._generate_graft_points(
-                        a,
-                        y,
-                        self.cfg.iso_map.images[y].repos
-                )
+                grafts = self._generate_graft_points(a, y)
                 try:
                     self._extra_iso_local_config(a, y, grafts, work_root)
                 except ValueError as exc:
@@ -918,12 +914,7 @@ class IsoBuild:
                 )
 
 
-    def _generate_graft_points(
-            self,
-            arch,
-            iso,
-            variants
-        ):
+    def _generate_graft_points(self, arch, iso):
         """
         Get a list of packages for an extras ISO. This should NOT be called
         during the usual run() section.
@@ -955,7 +946,7 @@ class IsoBuild:
         # Some variants cannot go through a proper scan.
         if self.cfg.iso_map.images[iso].get('reposcan', True):
             # This is to get all the packages for each repo
-            for repo in variants:
+            for repo in self.cfg.iso_map.images[iso].repos:
                 pkg_for_var = os.path.join(
                         self.compose_latest_sync,
                         repo,
